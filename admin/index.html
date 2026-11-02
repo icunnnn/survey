@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin kuesioner</title>
+<link rel="stylesheet" href="../style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="../config.js"></script>
+</head>
+<body>
+<main id="app">Memuat…</main>
+<script>
+const db = supabase.createClient(CFG.url, CFG.key), app = document.getElementById('app');
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const T = {text:'Teks singkat',paragraph:'Paragraf',radio:'Pilihan ganda',checkbox:'Kotak centang',dropdown:'Dropdown',likert:'Skala 1-5',number:'Angka',date:'Tanggal'};
+const OPT = ['radio','checkbox','dropdown'];
+let S, Q = [], del = [];
+
+async function boot() {
+  const { data: { session } } = await db.auth.getSession();
+  session ? list() : login();
+}
+
+function login() {
+  app.innerHTML = `<div class="card"><h1>Admin</h1><input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Kata sandi"><p class="err" id="err"></p><button class="p" id="go">Masuk</button></div>`;
+  $('go').onclick = async () => {
+    const { error } = await db.auth.signInWithPassword({ email: $('em').value, password: $('pw').value });
+    error ? $('err').textContent = error.message : boot();
+  };
+}
+
+async function list() {
+  const { data } = await db.from('surveys').select('*').order('created_at', { ascending: false });
+  app.innerHTML = `<div class="row"><h1 class="g">Kuesioner</h1><button class="p" id="new">Buat kuesioner</button><button id="out">Keluar</button></div>`
+    + ((data || []).map(s => `<div class="card row"><div class="g"><b>${esc(s.title)}</b><div class="mut">${s.status}</div></div><button data-id="${s.id}">Kelola</button></div>`).join('') || '<p class="mut">Belum ada kuesioner. Klik "Buat kuesioner".</p>');
+  $('out').onclick = async () => { await db.auth.signOut(); login(); };
+  $('new').onclick = async () => {
+    const r = await db.from('surveys').insert({ title: 'Kuesioner baru' }).select().single();
+    r.error ? alert(r.error.message) : edit(r.data.id);
+  };
+  app.querySelectorAll('button[data-id]').forEach(b => b.onclick = () => edit(b.dataset.id));
+}
+
+async function edit(id) {
+  S = (await db.from('surveys').select('*').eq('id', id).single()).data;
+  Q = (await db.from('questions').select('*').eq('survey_id', id).order('position')).data || [];
+  del = [];
+  const link = location.origin + '/?s=' + S.id;
+  const sel = (arr, v) => arr.map(([k, t]) => `<option value="${k}"${v === k ? ' selected' : ''}>${t}</option>`).join('');
+  app.innerHTML = `<div class="row"><button id="back">Kembali</button><button id="ans">Lihat jawaban</button><button class="d" id="rm">Hapus kuesioner</button></div>
+  <div class="card"><h2>Pengaturan</h2>
+  <input id="t" value="${esc(S.title)}" placeholder="Judul"><textarea id="d" placeholder="Deskripsi">${esc(S.description)}</textarea>
+  <textarea id="c" placeholder="Teks persetujuan (informed consent). Kosongkan jika tidak perlu.">${esc(S.consent)}</textarea>
+  <div class="row"><select class="g" id="i">${sel([['anonim','Responden anonim'],['nama','Wajib isi nama'],['nama_email','Wajib isi nama dan email']], S.identity)}</select>
+  <select class="g" id="st">${sel([['draft','Draft (belum bisa diisi)'],['buka','Dibuka'],['tutup','Ditutup']], S.status)}</select></div>
+  <p class="mut">Link responden: <a href="${link}" target="_blank">${link}</a></p></div>
+  <h2>Pertanyaan</h2><div id="qs"></div>
+  <div class="row"><button id="add">Tambah pertanyaan</button><button class="p" id="save">Simpan semua</button><span id="msg" class="mut"></span></div>`;
+  $('back').onclick = list;
+  $('ans').onclick = responses;
+  $('rm').onclick = async () => { if (confirm('Hapus kuesioner beserta semua jawabannya?')) { await db.from('surveys').delete().eq('id', S.id); list(); } };
+  $('add').onclick = () => { Q.push({ id: null, text: '', type: 'text', required: false, options: [] }); drawQ(); };
+  $('qs').oninput = $('qs').onchange = e => {
+    const t = e.target, k = t.dataset.k; if (!k) return;
+    Q[t.dataset.i][k] = k === 'required' ? t.checked : k === 'options' ? t.value.split('\n').map(s => s.trim()).filter(Boolean) : t.value;
+    if (k === 'type') drawQ();
+  };
+  $('qs').onclick = e => {
+    const a = e.target.dataset.a, i = +e.target.dataset.i; if (!a) return;
+    if (a === 'rm') { if (Q[i].id) del.push(Q[i].id); Q.splice(i, 1); }
+    else { const j = a === 'up' ? i - 1 : i + 1; if (j < 0 || j >= Q.length) return; [Q[i], Q[j]] = [Q[j], Q[i]]; }
+    drawQ();
+  };
+  $('save').onclick = save;
+  drawQ();
+}
+
+function drawQ() {
+  $('qs').innerHTML = Q.map((q, i) => `<div class="card">
+    <div class="row"><b>${i + 1}.</b><input class="g" data-i="${i}" data-k="text" value="${esc(q.text)}" placeholder="Tulis pertanyaan"></div>
+    <div class="row"><select class="g" data-i="${i}" data-k="type">${Object.entries(T).map(([k, v]) => `<option value="${k}"${q.type === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
+    <label class="o"><input type="checkbox" data-i="${i}" data-k="required"${q.required ? ' checked' : ''}>Wajib diisi</label>
+    <button data-a="up" data-i="${i}">Naik</button><button data-a="dn" data-i="${i}">Turun</button><button class="d" data-a="rm" data-i="${i}">Hapus</button></div>
+    ${OPT.includes(q.type) ? `<textarea data-i="${i}" data-k="options" placeholder="Satu pilihan per baris">${esc((q.options || []).join('\n'))}</textarea>` : ''}</div>`).join('')
+    || '<p class="mut">Belum ada pertanyaan. Klik "Tambah pertanyaan".</p>';
+}
+
+async function save() {
+  const msg = $('msg');
+  if (Q.some(q => !q.text.trim())) { msg.textContent = 'Ada pertanyaan yang masih kosong.'; return; }
+  if (Q.some(q => OPT.includes(q.type) && !(q.options || []).length)) { msg.textContent = 'Isi pilihan untuk pertanyaan bertipe pilihan.'; return; }
+  msg.textContent = 'Menyimpan…';
+  const s = await db.from('surveys').update({ title: $('t').value, description: $('d').value, consent: $('c').value, identity: $('i').value, status: $('st').value }).eq('id', S.id);
+  const rows = Q.map((q, i) => ({ id: q.id || crypto.randomUUID(), survey_id: S.id, position: i, text: q.text, type: q.type, required: !!q.required, options: OPT.includes(q.type) ? q.options : [] }));
+  let e = s.error;
+  if (!e && del.length) e = (await db.from('questions').delete().in('id', del)).error;
+  if (!e && rows.length) e = (await db.from('questions').upsert(rows)).error;
+  if (e) { msg.textContent = 'Gagal menyimpan: ' + e.message; return; }
+  Q.forEach((q, i) => q.id = rows[i].id); del = [];
+  S = { ...S, title: $('t').value, status: $('st').value };
+  msg.textContent = 'Tersimpan.';
+}
+
+async function responses() {
+  const qs = Q.filter(q => q.id);
+  const { data: R, error } = await db.from('responses').select('*, answers(question_id,value)').eq('survey_id', S.id).order('created_at');
+  if (error) { alert(error.message); return; }
+  const head = ['No', 'Waktu', 'Nama', 'Email', ...qs.map(q => q.text)];
+  const rows = (R || []).map((r, n) => {
+    const m = Object.fromEntries(r.answers.map(a => [a.question_id, a.value]));
+    return [n + 1, new Date(r.created_at).toLocaleString('id-ID'), r.name || '', r.email || '', ...qs.map(q => m[q.id] || '')];
+  });
+  app.innerHTML = `<div class="row"><button id="back">Kembali</button><h2 class="g" style="margin:0">${esc(S.title)}: ${rows.length} responden</h2><button class="p" id="xl"${rows.length ? '' : ' disabled'}>Export Excel</button></div>
+  <div class="card tw">${rows.length ? `<table><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}<th></th></tr>`
+    + rows.map((r, i) => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}<td><button class="d" data-id="${R[i].id}">Hapus</button></td></tr>`).join('') + '</table>' : '<p class="mut">Belum ada yang menjawab.</p>'}</div>`;
+  $('back').onclick = () => edit(S.id);
+  $('xl').onclick = () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rows]), 'Jawaban');
+    XLSX.writeFile(wb, (S.title.replace(/[^\w]+/g, '_') || 'jawaban') + '.xlsx');
+  };
+  app.querySelectorAll('button[data-id]').forEach(b => b.onclick = async () => {
+    if (confirm('Hapus jawaban responden ini?')) { await db.from('responses').delete().eq('id', b.dataset.id); responses(); }
+  });
+}
+boot();
+</script>
+</body>
+</html>
