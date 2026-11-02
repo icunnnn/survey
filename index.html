@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
+<script src="fmt.js"></script>
 </head>
 <body>
 <main id="app">Memuat…</main>
@@ -51,11 +52,12 @@ function field(q) {
 }
 
 function render() {
+  let num = 0;
   app.innerHTML = `<div class="pg"><i id="bar"></i></div><div class="pc" id="pc"></div>`
     + `<div class="hero"><h1>${esc(S.title)}</h1>${S.description ? `<p>${esc(S.description)}</p>` : ''}</div><form id="f">`
     + (S.consent ? `<div class="card"><h2>Persetujuan</h2><p style="white-space:pre-wrap">${esc(S.consent)}</p><label class="o"><input type="checkbox" required>Saya sudah membaca dan setuju ikut serta</label></div>` : '')
     + (S.identity !== 'anonim' ? `<div class="card"><h2>Identitas</h2><input name="name" placeholder="Nama" required>` + (S.identity === 'nama_email' ? `<input name="email" type="email" placeholder="Email" required>` : '') + `</div>` : '')
-    + Q.map((q, i) => `<div class="card" data-q="${q.id}"><div class="qt"><span class="n">${i + 1}</span><b>${esc(q.text)}${q.required ? ' <span class="req">*</span>' : ''}</b></div>${field(q)}</div>`).join('')
+    + Q.map(q => q.type === 'info' ? `<div class="info ${['banner', 'soft', 'kartu'].includes(q.options?.[0]) ? q.options[0] : 'banner'}">${fmt(q.text)}</div>` : `<div class="card" data-q="${q.id}"><div class="qt"><span class="n">${++num}</span><b>${esc(q.text)}${q.required ? ' <span class="req">*</span>' : ''}</b></div>${field(q)}</div>`).join('')
     + `<p class="err" id="err"></p><button class="p sub" id="btn">Kirim jawaban</button></form>`;
   const f = $('f');
   f.onsubmit = send;
@@ -64,11 +66,11 @@ function render() {
 }
 
 function prog() {
-  const fd = new FormData($('f')); let n = 0;
-  for (const q of Q) if (fd.getAll('q' + q.id).some(x => String(x).trim())) n++;
-  $('bar').style.width = (Q.length ? n / Q.length * 100 : 0) + '%';
-  $('pc').textContent = n + ' dari ' + Q.length + ' terjawab';
-  $('pc').hidden = !Q.length;
+  const fd = new FormData($('f')), QA = Q.filter(q => q.type !== 'info'); let n = 0;
+  for (const q of QA) if (fd.getAll('q' + q.id).some(x => String(x).trim())) n++;
+  $('bar').style.width = (QA.length ? n / QA.length * 100 : 0) + '%';
+  $('pc').textContent = n + ' dari ' + QA.length + ' terjawab';
+  $('pc').hidden = !QA.length;
 }
 
 async function send(e) {
@@ -76,6 +78,7 @@ async function send(e) {
   const err = $('err'), btn = $('btn'); err.textContent = '';
   const fd = new FormData(e.target), ans = [];
   for (const q of Q) {
+    if (q.type === 'info') continue;
     const v = fd.getAll('q' + q.id).map(x => String(x).trim()).filter(Boolean).join('; ');
     if (q.required && !v) {
       const c = document.querySelector(`[data-q="${q.id}"]`);
