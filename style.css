@@ -75,3 +75,12 @@ h1{font-size:1.5rem}
 .pc{right:auto;left:50%;transform:translateX(-50%)}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.info{border-radius:20px;padding:20px 22px;margin:0 0 16px;line-height:1.7}
+.info p{margin:.4em 0}
+.info h3{margin:0 0 6px;font-size:1.15rem}
+.info ol,.info ul{margin:.4em 0;padding-left:1.4em}
+.info li{margin:.15em 0}
+.info.banner{background:linear-gradient(135deg,var(--ac),var(--ac2));color:var(--on);box-shadow:var(--sh)}
+.info.soft{background:color-mix(in srgb,var(--ac) 10%,var(--card));border:1px solid var(--line);border-left:5px solid var(--ac)}
+.info.kartu{background:var(--card);border:1px solid var(--line);box-shadow:var(--sh)}
+.tb button{padding:4px 14px;font-size:.88rem}
