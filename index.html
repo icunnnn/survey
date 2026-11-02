@@ -14,14 +14,15 @@
 const db = supabase.createClient(CFG.url, CFG.key), app = document.getElementById('app');
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const L = j => String.fromCharCode(65 + j);
 let S, Q;
 
 async function init() {
   const id = new URLSearchParams(location.search).get('s');
   if (!id) {
     const { data } = await db.from('surveys').select('id,title,description').eq('status', 'buka');
-    app.innerHTML = '<h1>Kuesioner</h1>' + (data?.length
-      ? data.map(s => `<a class="card" style="display:block;color:inherit;text-decoration:none" href="?s=${s.id}"><h2>${esc(s.title)}</h2><div class="mut">${esc(s.description)}</div></a>`).join('')
+    app.innerHTML = '<div class="hero"><h1>Kuesioner</h1><p>Pilih kuesioner yang ingin diisi.</p></div>' + (data?.length
+      ? data.map(s => `<a class="card lnk" href="?s=${s.id}"><h2>${esc(s.title)}</h2><div class="mut">${esc(s.description)}</div></a>`).join('')
       : '<p class="mut">Belum ada kuesioner yang dibuka.</p>');
     return;
   }
@@ -40,21 +41,34 @@ function field(q) {
     case 'paragraph': return `<textarea name="${n}"></textarea>`;
     case 'number': return `<input type="number" name="${n}">`;
     case 'date': return `<input type="date" name="${n}">`;
-    case 'dropdown': return `<select name="${n}"><option value="">Pilih…</option>${o.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
-    case 'radio': return o.map(x => `<label class="o"><input type="radio" name="${n}" value="${esc(x)}">${esc(x)}</label>`).join('');
-    case 'checkbox': return o.map(x => `<label class="o"><input type="checkbox" name="${n}" value="${esc(x)}">${esc(x)}</label>`).join('');
-    case 'likert': return `<div class="lk">${[1,2,3,4,5].map(i => `<label class="o"><input type="radio" name="${n}" value="${i}">${i}</label>`).join('')}</div><div class="mut">1 = sangat tidak setuju, 5 = sangat setuju</div>`;
+    case 'dropdown': return `<select name="${n}"><option value="">Pilih…</option>${o.map((x, j) => `<option value="${esc(x)}">${L(j)}. ${esc(x)}</option>`).join('')}</select>`;
+    case 'radio': case 'checkbox':
+      return `<div class="ops">${o.map((x, j) => `<label class="op"><input type="${q.type}" name="${n}" value="${esc(x)}"><b>${L(j)}</b><span>${esc(x)}</span></label>`).join('')}</div>`
+        + (q.type === 'checkbox' ? '<div class="mut" style="margin-top:6px">Boleh pilih lebih dari satu.</div>' : '');
+    case 'likert': return `<div class="lk">${[1,2,3,4,5].map(i => `<label class="sc"><input type="radio" name="${n}" value="${i}"><span>${i}</span></label>`).join('')}</div><div class="ends"><span>Sangat tidak setuju</span><span>Sangat setuju</span></div>`;
   }
   return '';
 }
 
 function render() {
-  app.innerHTML = `<h1>${esc(S.title)}</h1><p class="mut" style="white-space:pre-wrap">${esc(S.description)}</p><form id="f">`
+  app.innerHTML = `<div class="pg"><i id="bar"></i></div><div class="pc" id="pc"></div>`
+    + `<div class="hero"><h1>${esc(S.title)}</h1>${S.description ? `<p>${esc(S.description)}</p>` : ''}</div><form id="f">`
     + (S.consent ? `<div class="card"><h2>Persetujuan</h2><p style="white-space:pre-wrap">${esc(S.consent)}</p><label class="o"><input type="checkbox" required>Saya sudah membaca dan setuju ikut serta</label></div>` : '')
     + (S.identity !== 'anonim' ? `<div class="card"><h2>Identitas</h2><input name="name" placeholder="Nama" required>` + (S.identity === 'nama_email' ? `<input name="email" type="email" placeholder="Email" required>` : '') + `</div>` : '')
-    + Q.map((q, i) => `<div class="card"><label><b>${i + 1}. ${esc(q.text)}</b>${q.required ? ' <span class="req">*</span>' : ''}</label>${field(q)}</div>`).join('')
-    + `<p class="err" id="err"></p><button class="p" id="btn">Kirim jawaban</button></form>`;
-  $('f').onsubmit = send;
+    + Q.map((q, i) => `<div class="card" data-q="${q.id}"><div class="qt"><span class="n">${i + 1}</span><b>${esc(q.text)}${q.required ? ' <span class="req">*</span>' : ''}</b></div>${field(q)}</div>`).join('')
+    + `<p class="err" id="err"></p><button class="p sub" id="btn">Kirim jawaban</button></form>`;
+  const f = $('f');
+  f.onsubmit = send;
+  f.oninput = f.onchange = e => { e.target.closest('.card')?.classList.remove('bad'); prog(); };
+  prog();
+}
+
+function prog() {
+  const fd = new FormData($('f')); let n = 0;
+  for (const q of Q) if (fd.getAll('q' + q.id).some(x => String(x).trim())) n++;
+  $('bar').style.width = (Q.length ? n / Q.length * 100 : 0) + '%';
+  $('pc').textContent = n + ' dari ' + Q.length + ' terjawab';
+  $('pc').hidden = !Q.length;
 }
 
 async function send(e) {
@@ -63,7 +77,13 @@ async function send(e) {
   const fd = new FormData(e.target), ans = [];
   for (const q of Q) {
     const v = fd.getAll('q' + q.id).map(x => String(x).trim()).filter(Boolean).join('; ');
-    if (q.required && !v) { err.textContent = 'Pertanyaan wajib belum diisi: ' + q.text; return; }
+    if (q.required && !v) {
+      const c = document.querySelector(`[data-q="${q.id}"]`);
+      c.classList.remove('bad'); void c.offsetWidth; c.classList.add('bad');
+      c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      err.textContent = 'Pertanyaan bertanda * wajib diisi.';
+      return;
+    }
     if (v) ans.push({ question_id: q.id, value: v });
   }
   btn.disabled = true;
@@ -71,7 +91,8 @@ async function send(e) {
   let r = await db.from('responses').insert({ id: rid, survey_id: S.id, name: fd.get('name') || null, email: fd.get('email') || null });
   if (!r.error && ans.length) r = await db.from('answers').insert(ans.map(a => ({ ...a, response_id: rid })));
   if (r.error) { err.textContent = 'Jawaban gagal terkirim: ' + r.error.message; btn.disabled = false; return; }
-  app.innerHTML = '<div class="card"><h1>Terima kasih</h1><p>Jawaban kamu sudah terkirim.</p></div>';
+  app.innerHTML = '<div class="card done"><div class="ck">✓</div><h1>Terima kasih!</h1><p class="mut">Jawaban kamu sudah terkirim.</p></div>';
+  scrollTo({ top: 0, behavior: 'smooth' });
 }
 init();
 </script>
