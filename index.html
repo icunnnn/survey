@@ -1,1 +1,79 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kuesioner</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+<main id="app">Memuat…</main>
+<script>
+const db = supabase.createClient(CFG.url, CFG.key), app = document.getElementById('app');
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S, Q;
 
+async function init() {
+  const id = new URLSearchParams(location.search).get('s');
+  if (!id) {
+    const { data } = await db.from('surveys').select('id,title,description').eq('status', 'buka');
+    app.innerHTML = '<h1>Kuesioner</h1>' + (data?.length
+      ? data.map(s => `<a class="card" style="display:block;color:inherit;text-decoration:none" href="?s=${s.id}"><h2>${esc(s.title)}</h2><div class="mut">${esc(s.description)}</div></a>`).join('')
+      : '<p class="mut">Belum ada kuesioner yang dibuka.</p>');
+    return;
+  }
+  const r = await db.from('surveys').select('*').eq('id', id).eq('status', 'buka').maybeSingle();
+  S = r.data;
+  if (!S) { app.innerHTML = '<div class="card">Kuesioner tidak ditemukan atau sudah ditutup.</div>'; return; }
+  Q = (await db.from('questions').select('*').eq('survey_id', id).order('position')).data || [];
+  document.title = S.title;
+  render();
+}
+
+function field(q) {
+  const n = 'q' + q.id, o = q.options || [];
+  switch (q.type) {
+    case 'text': return `<input name="${n}">`;
+    case 'paragraph': return `<textarea name="${n}"></textarea>`;
+    case 'number': return `<input type="number" name="${n}">`;
+    case 'date': return `<input type="date" name="${n}">`;
+    case 'dropdown': return `<select name="${n}"><option value="">Pilih…</option>${o.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
+    case 'radio': return o.map(x => `<label class="o"><input type="radio" name="${n}" value="${esc(x)}">${esc(x)}</label>`).join('');
+    case 'checkbox': return o.map(x => `<label class="o"><input type="checkbox" name="${n}" value="${esc(x)}">${esc(x)}</label>`).join('');
+    case 'likert': return `<div class="lk">${[1,2,3,4,5].map(i => `<label class="o"><input type="radio" name="${n}" value="${i}">${i}</label>`).join('')}</div><div class="mut">1 = sangat tidak setuju, 5 = sangat setuju</div>`;
+  }
+  return '';
+}
+
+function render() {
+  app.innerHTML = `<h1>${esc(S.title)}</h1><p class="mut" style="white-space:pre-wrap">${esc(S.description)}</p><form id="f">`
+    + (S.consent ? `<div class="card"><h2>Persetujuan</h2><p style="white-space:pre-wrap">${esc(S.consent)}</p><label class="o"><input type="checkbox" required>Saya sudah membaca dan setuju ikut serta</label></div>` : '')
+    + (S.identity !== 'anonim' ? `<div class="card"><h2>Identitas</h2><input name="name" placeholder="Nama" required>` + (S.identity === 'nama_email' ? `<input name="email" type="email" placeholder="Email" required>` : '') + `</div>` : '')
+    + Q.map((q, i) => `<div class="card"><label><b>${i + 1}. ${esc(q.text)}</b>${q.required ? ' <span class="req">*</span>' : ''}</label>${field(q)}</div>`).join('')
+    + `<p class="err" id="err"></p><button class="p" id="btn">Kirim jawaban</button></form>`;
+  $('f').onsubmit = send;
+}
+
+async function send(e) {
+  e.preventDefault();
+  const err = $('err'), btn = $('btn'); err.textContent = '';
+  const fd = new FormData(e.target), ans = [];
+  for (const q of Q) {
+    const v = fd.getAll('q' + q.id).map(x => String(x).trim()).filter(Boolean).join('; ');
+    if (q.required && !v) { err.textContent = 'Pertanyaan wajib belum diisi: ' + q.text; return; }
+    if (v) ans.push({ question_id: q.id, value: v });
+  }
+  btn.disabled = true;
+  const rid = crypto.randomUUID();
+  let r = await db.from('responses').insert({ id: rid, survey_id: S.id, name: fd.get('name') || null, email: fd.get('email') || null });
+  if (!r.error && ans.length) r = await db.from('answers').insert(ans.map(a => ({ ...a, response_id: rid })));
+  if (r.error) { err.textContent = 'Jawaban gagal terkirim: ' + r.error.message; btn.disabled = false; return; }
+  app.innerHTML = '<div class="card"><h1>Terima kasih</h1><p>Jawaban kamu sudah terkirim.</p></div>';
+}
+init();
+</script>
+</body>
+</html>
