@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="../config.js"></script>
+<script src="../fmt.js"></script>
 </head>
 <body>
 <main id="app">Memuat…</main>
@@ -16,7 +17,7 @@
 const db = supabase.createClient(CFG.url, CFG.key), app = document.getElementById('app');
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const T = {text:'Teks singkat',paragraph:'Paragraf',radio:'Pilihan ganda',checkbox:'Kotak centang',dropdown:'Dropdown',likert:'Skala 1-5',number:'Angka',date:'Tanggal'};
+const T = {text:'Teks singkat',paragraph:'Paragraf',radio:'Pilihan ganda',checkbox:'Kotak centang',dropdown:'Dropdown',likert:'Skala 1-5',number:'Angka',date:'Tanggal',info:'Keterangan (bukan pertanyaan)'};
 const OPT = ['radio','checkbox','dropdown'];
 const L = j => String.fromCharCode(65 + j);
 let S, Q = [], del = [];
@@ -60,20 +61,30 @@ async function edit(id) {
   <select class="g" id="st">${sel([['draft','Draft (belum bisa diisi)'],['buka','Dibuka'],['tutup','Ditutup']], S.status)}</select></div>
   <p class="mut">Link responden: <a href="${link}" target="_blank">${link}</a></p></div>
   <h2>Pertanyaan</h2><div id="qs"></div>
-  <div class="row"><button id="add">Tambah pertanyaan</button><button class="p" id="save">Simpan semua</button><span id="msg" class="mut"></span></div>`;
+  <div class="row"><button id="add">Tambah pertanyaan</button><button id="addi">Tambah keterangan</button><button class="p" id="save">Simpan semua</button><span id="msg" class="mut"></span></div>`;
   $('back').onclick = list;
   $('ans').onclick = responses;
   $('rm').onclick = async () => { if (confirm('Hapus kuesioner beserta semua jawabannya?')) { await db.from('surveys').delete().eq('id', S.id); list(); } };
+  $('addi').onclick = () => { Q.push({ id: null, text: '', type: 'info', required: false, options: ['banner'] }); drawQ(); };
   $('add').onclick = () => { Q.push({ id: null, text: '', type: 'text', required: false, options: [] }); drawQ(); };
   $('qs').oninput = $('qs').onchange = e => {
     const t = e.target, k = t.dataset.k; if (!k) return;
     const q = Q[t.dataset.i];
     if (k === 'opt') { q.options[t.dataset.j] = t.value; return; }
+    if (k === 'sty') { q.options = [t.value]; drawQ(); return; }
+    const prev = q.type;
     q[k] = k === 'required' ? t.checked : t.value;
-    if (k === 'type') { if (OPT.includes(q.type) && !(q.options || []).length) q.options = ['', '']; drawQ(); }
+    if (k === 'text' && q.type === 'info') { const pv = $('pv' + t.dataset.i); if (pv) pv.innerHTML = fmt(q.text); }
+    if (k === 'type') {
+      if (q.type === 'info') { q.required = false; q.options = ['banner']; }
+      else if (prev === 'info') q.options = OPT.includes(q.type) ? ['', ''] : [];
+      else if (OPT.includes(q.type) && !(q.options || []).length) q.options = ['', ''];
+      drawQ();
+    }
   };
   $('qs').onclick = e => {
     const a = e.target.dataset.a, i = +e.target.dataset.i; if (!a) return;
+    if (a === 'fmt') { applyFmt(i, e.target.dataset.f); return; }
     if (a === 'ao') Q[i].options.push('');
     else if (a === 'ro') Q[i].options.splice(+e.target.dataset.j, 1);
     else if (a === 'rm') { if (Q[i].id) del.push(Q[i].id); Q.splice(i, 1); }
@@ -85,14 +96,41 @@ async function edit(id) {
   drawQ();
 }
 
+function applyFmt(i, f) {
+  const ta = document.querySelector(`#qs textarea[data-i="${i}"][data-k="text"]`), v = ta.value;
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  if (f === 'b' || f === 'i') {
+    const m = f === 'b' ? '**' : '*';
+    ta.value = v.slice(0, s) + m + v.slice(s, e) + m + v.slice(e);
+    ta.setSelectionRange(s + m.length, e + m.length);
+  } else {
+    const ls = s ? v.lastIndexOf('\n', s - 1) + 1 : 0;
+    const out = v.slice(ls, e).split('\n').map((l, n) => (f === 'ol' ? (n + 1) + '. ' : f === 'ul' ? '- ' : '# ') + l).join('\n');
+    ta.value = v.slice(0, ls) + out + v.slice(e);
+    ta.setSelectionRange(ls, ls + out.length);
+  }
+  ta.focus();
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function drawQ() {
-  $('qs').innerHTML = Q.map((q, i) => `<div class="card">
-    <div class="row"><b>${i + 1}.</b><input class="g" data-i="${i}" data-k="text" value="${esc(q.text)}" placeholder="Tulis pertanyaan"></div>
-    <div class="row"><select class="g" data-i="${i}" data-k="type">${Object.entries(T).map(([k, v]) => `<option value="${k}"${q.type === k ? ' selected' : ''}>${v}</option>`).join('')}</select>
-    <label class="o"><input type="checkbox" data-i="${i}" data-k="required"${q.required ? ' checked' : ''}>Wajib diisi</label>
-    <button data-a="up" data-i="${i}">Naik</button><button data-a="dn" data-i="${i}">Turun</button><button class="d" data-a="rm" data-i="${i}">Hapus</button></div>
+  let n = 0;
+  const ctl = i => `<button data-a="up" data-i="${i}">Naik</button><button data-a="dn" data-i="${i}">Turun</button><button class="d" data-a="rm" data-i="${i}">Hapus</button>`;
+  const typeSel = (q, i) => `<select class="g" data-i="${i}" data-k="type">${Object.entries(T).map(([k, v]) => `<option value="${k}"${q.type === k ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+  const fb = (i, f, label) => `<button data-a="fmt" data-f="${f}" data-i="${i}">${label}</button>`;
+  $('qs').innerHTML = Q.map((q, i) => q.type === 'info' ? `<div class="card">
+    <div class="row"><span class="n" style="padding:0 10px">Keterangan</span>${typeSel(q, i)}${ctl(i)}</div>
+    <div class="row tb">${fb(i, 'h', 'Judul')}${fb(i, 'b', '<b>B</b>')}${fb(i, 'i', '<i>I</i>')}${fb(i, 'ol', '1. Daftar')}${fb(i, 'ul', '• Daftar')}
+    <select class="g" data-i="${i}" data-k="sty">${[['banner', 'Banner ungu'], ['soft', 'Kotak lembut'], ['kartu', 'Kartu putih']].map(([k, t]) => `<option value="${k}"${(q.options || [])[0] === k ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+    <textarea style="min-height:140px" data-i="${i}" data-k="text" placeholder="Tulis keterangan di sini…">${esc(q.text)}</textarea>
+    <div class="mut" style="margin:8px 0 4px">Pratinjau (begini tampilannya untuk responden)</div>
+    <div class="info ${esc((q.options || [])[0] || 'banner')}" id="pv${i}">${fmt(q.text)}</div></div>`
+  : `<div class="card">
+    <div class="row"><span class="n">${++n}</span><input class="g" data-i="${i}" data-k="text" value="${esc(q.text)}" placeholder="Tulis pertanyaan"></div>
+    <div class="row">${typeSel(q, i)}
+    <label class="o"><input type="checkbox" data-i="${i}" data-k="required"${q.required ? ' checked' : ''}>Wajib diisi</label>${ctl(i)}</div>
     ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><input class="g" data-i="${i}" data-j="${j}" data-k="opt" value="${esc(o)}" placeholder="Isi opsi ${L(j)}"><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}</div>`).join('')
-    || '<p class="mut">Belum ada pertanyaan. Klik "Tambah pertanyaan".</p>';
+    || '<p class="mut">Belum ada pertanyaan. Klik "Tambah pertanyaan" atau "Tambah keterangan".</p>';
 }
 
 async function save() {
@@ -102,7 +140,7 @@ async function save() {
   if (Q.some(q => OPT.includes(q.type) && q.options.length < 2)) { msg.textContent = 'Pertanyaan bertipe pilihan butuh minimal 2 opsi.'; drawQ(); return; }
   msg.textContent = 'Menyimpan…';
   const s = await db.from('surveys').update({ title: $('t').value, description: $('d').value, consent: $('c').value, identity: $('i').value, status: $('st').value }).eq('id', S.id);
-  const rows = Q.map((q, i) => ({ id: q.id || crypto.randomUUID(), survey_id: S.id, position: i, text: q.text, type: q.type, required: !!q.required, options: OPT.includes(q.type) ? q.options : [] }));
+  const rows = Q.map((q, i) => ({ id: q.id || crypto.randomUUID(), survey_id: S.id, position: i, text: q.text, type: q.type, required: !!q.required, options: OPT.includes(q.type) || q.type === 'info' ? q.options : [] }));
   let e = s.error;
   if (!e && del.length) e = (await db.from('questions').delete().in('id', del)).error;
   if (!e && rows.length) e = (await db.from('questions').upsert(rows)).error;
@@ -113,7 +151,7 @@ async function save() {
 }
 
 async function responses() {
-  const qs = Q.filter(q => q.id);
+  const qs = Q.filter(q => q.id && q.type !== 'info');
   const { data: R, error } = await db.from('responses').select('*, answers(question_id,value)').eq('survey_id', S.id).order('created_at');
   if (error) { alert(error.message); return; }
   const head = ['No', 'Waktu', 'Nama', 'Email', ...qs.map(q => q.text)];
