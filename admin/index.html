@@ -19,6 +19,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const T = {text:'Teks singkat',paragraph:'Paragraf',radio:'Pilihan ganda',checkbox:'Kotak centang',dropdown:'Dropdown',likert:'Skala 1-5',number:'Angka',date:'Tanggal',info:'Keterangan (bukan pertanyaan)'};
 const OPT = ['radio','checkbox','dropdown'];
+const LK = ['Sangat tidak setuju', 'Sangat setuju'];
 const L = j => String.fromCharCode(65 + j);
 let S, Q = [], del = [];
 
@@ -50,6 +51,7 @@ async function list() {
 async function edit(id) {
   S = (await db.from('surveys').select('*').eq('id', id).single()).data;
   Q = (await db.from('questions').select('*').eq('survey_id', id).order('position')).data || [];
+  Q.forEach(q => { if (q.type === 'likert' && !(q.options || []).length) q.options = [...LK]; });
   del = [];
   const link = location.origin + '/?s=' + S.id;
   const sel = (arr, v) => arr.map(([k, t]) => `<option value="${k}"${v === k ? ' selected' : ''}>${t}</option>`).join('');
@@ -77,7 +79,8 @@ async function edit(id) {
     if (k === 'text' && q.type === 'info') { const pv = $('pv' + t.dataset.i); if (pv) pv.innerHTML = fmt(q.text); }
     if (k === 'type') {
       if (q.type === 'info') { q.required = false; q.options = ['banner']; }
-      else if (prev === 'info') q.options = OPT.includes(q.type) ? ['', ''] : [];
+      else if (q.type === 'likert') q.options = [...LK];
+      else if (prev === 'info' || prev === 'likert') q.options = OPT.includes(q.type) ? ['', ''] : [];
       else if (OPT.includes(q.type) && !(q.options || []).length) q.options = ['', ''];
       drawQ();
     }
@@ -129,7 +132,7 @@ function drawQ() {
     <div class="row"><span class="n">${++n}</span><input class="g" data-i="${i}" data-k="text" value="${esc(q.text)}" placeholder="Tulis pertanyaan"></div>
     <div class="row">${typeSel(q, i)}
     <label class="o"><input type="checkbox" data-i="${i}" data-k="required"${q.required ? ' checked' : ''}>Wajib diisi</label>${ctl(i)}</div>
-    ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><input class="g" data-i="${i}" data-j="${j}" data-k="opt" value="${esc(o)}" placeholder="Isi opsi ${L(j)}"><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}</div>`).join('')
+    ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><input class="g" data-i="${i}" data-j="${j}" data-k="opt" value="${esc(o)}" placeholder="Isi opsi ${L(j)}"><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}${q.type === 'likert' ? `<div class="mut" style="margin-bottom:6px">Keterangan ujung skala. Kosongkan untuk menghilangkan.</div><div class="row"><input class="g" data-i="${i}" data-j="0" data-k="opt" value="${esc((q.options || [])[0])}" placeholder="Keterangan angka 1"><input class="g" data-i="${i}" data-j="1" data-k="opt" value="${esc((q.options || [])[1])}" placeholder="Keterangan angka 5"></div>` : ''}</div>`).join('')
     || '<p class="mut">Belum ada pertanyaan. Klik "Tambah pertanyaan" atau "Tambah keterangan".</p>';
 }
 
@@ -140,7 +143,7 @@ async function save() {
   if (Q.some(q => OPT.includes(q.type) && q.options.length < 2)) { msg.textContent = 'Pertanyaan bertipe pilihan butuh minimal 2 opsi.'; drawQ(); return; }
   msg.textContent = 'Menyimpan…';
   const s = await db.from('surveys').update({ title: $('t').value, description: $('d').value, consent: $('c').value, identity: $('i').value, status: $('st').value }).eq('id', S.id);
-  const rows = Q.map((q, i) => ({ id: q.id || crypto.randomUUID(), survey_id: S.id, position: i, text: q.text, type: q.type, required: !!q.required, options: OPT.includes(q.type) || q.type === 'info' ? q.options : [] }));
+  const rows = Q.map((q, i) => ({ id: q.id || crypto.randomUUID(), survey_id: S.id, position: i, text: q.text, type: q.type, required: !!q.required, options: OPT.includes(q.type) || q.type === 'info' || q.type === 'likert' ? q.options : [] }));
   let e = s.error;
   if (!e && del.length) e = (await db.from('questions').delete().in('id', del)).error;
   if (!e && rows.length) e = (await db.from('questions').upsert(rows)).error;
