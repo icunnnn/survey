@@ -51,7 +51,7 @@ async function list() {
 async function edit(id) {
   S = (await db.from('surveys').select('*').eq('id', id).single()).data;
   Q = (await db.from('questions').select('*').eq('survey_id', id).order('position')).data || [];
-  Q.forEach(q => { if (q.type === 'likert' && !(q.options || []).length) q.options = [...LK]; });
+  Q.forEach(q => { if (q.type === 'likert') q.options = lkNorm(q.options); });
   del = [];
   const link = location.origin + '/?s=' + S.id;
   const sel = (arr, v) => arr.map(([k, t]) => `<option value="${k}"${v === k ? ' selected' : ''}>${t}</option>`).join('');
@@ -73,13 +73,19 @@ async function edit(id) {
     const t = e.target, k = t.dataset.k; if (!k) return;
     const q = Q[t.dataset.i];
     if (k === 'opt') { q.options[t.dataset.j] = t.value; return; }
+    if (k === 'lkl') { q.options.labels[t.dataset.j] = t.value; return; }
+    if (k === 'lkn') {
+      const nn = +t.value, old = q.options.labels;
+      q.options = { n: nn, labels: Array.from({ length: nn }, (_, i) => i === 0 ? old[0] : i === nn - 1 ? old[old.length - 1] : (i < old.length - 1 ? old[i] : '')) };
+      drawQ(); return;
+    }
     if (k === 'sty') { q.options = [t.value]; drawQ(); return; }
     const prev = q.type;
     q[k] = k === 'required' ? t.checked : t.value;
     if (k === 'text' && q.type === 'info') { const pv = $('pv' + t.dataset.i); if (pv) pv.innerHTML = fmt(q.text); }
     if (k === 'type') {
       if (q.type === 'info') { q.required = false; q.options = ['banner']; }
-      else if (q.type === 'likert') q.options = [...LK];
+      else if (q.type === 'likert') q.options = lkNorm();
       else if (prev === 'info' || prev === 'likert') q.options = OPT.includes(q.type) ? ['', ''] : [];
       else if (OPT.includes(q.type) && !(q.options || []).length) q.options = ['', ''];
       drawQ();
@@ -132,7 +138,7 @@ function drawQ() {
     <div class="row"><span class="n">${++n}</span><input class="g" data-i="${i}" data-k="text" value="${esc(q.text)}" placeholder="Tulis pertanyaan"></div>
     <div class="row">${typeSel(q, i)}
     <label class="o"><input type="checkbox" data-i="${i}" data-k="required"${q.required ? ' checked' : ''}>Wajib diisi</label>${ctl(i)}</div>
-    ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><input class="g" data-i="${i}" data-j="${j}" data-k="opt" value="${esc(o)}" placeholder="Isi opsi ${L(j)}"><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}${q.type === 'likert' ? `<div class="mut" style="margin-bottom:6px">Keterangan ujung skala. Kosongkan untuk menghilangkan.</div><div class="row"><input class="g" data-i="${i}" data-j="0" data-k="opt" value="${esc((q.options || [])[0])}" placeholder="Keterangan angka 1"><input class="g" data-i="${i}" data-j="1" data-k="opt" value="${esc((q.options || [])[1])}" placeholder="Keterangan angka 5"></div>` : ''}</div>`).join('')
+    ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><input class="g" data-i="${i}" data-j="${j}" data-k="opt" value="${esc(o)}" placeholder="Isi opsi ${L(j)}"><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}${q.type === 'likert' ? `<div class="row"><span class="mut">Jumlah skala</span><select data-i="${i}" data-k="lkn" style="width:auto">${[2,3,4,5,6,7,8,9,10].map(c => `<option value="${c}"${q.options.n === c ? ' selected' : ''}>1 sampai ${c}</option>`).join('')}</select></div><div class="mut" style="margin-bottom:6px">Keterangan tiap angka (boleh dikosongkan)</div>${q.options.labels.map((t, j) => `<div class="row opt"><span class="bd">${j + 1}</span><input class="g" data-i="${i}" data-j="${j}" data-k="lkl" value="${esc(t)}" placeholder="Keterangan untuk angka ${j + 1}"></div>`).join('')}` : ''}</div>`).join('')
     || '<p class="mut">Belum ada pertanyaan. Klik "Tambah pertanyaan" atau "Tambah keterangan".</p>';
 }
 
