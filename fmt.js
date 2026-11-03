@@ -13,3 +13,14 @@ window.fmt = t => {
   close();
   return out;
 };
+
+// Skala (Likert): {n: jumlah angka, labels: [keterangan tiap angka]}.
+// Data lama berupa [kiri, kanan] (skala 5) atau kosong, tetap dikenali.
+window.lkNorm = o => {
+  if (o && !Array.isArray(o)) {
+    const n = Math.min(10, Math.max(2, +o.n || 5));
+    return { n, labels: Array.from({ length: n }, (_, i) => (o.labels || [])[i] || '') };
+  }
+  const [a, b] = o && o.length ? o : ['Sangat tidak setuju', 'Sangat setuju'];
+  return { n: 5, labels: [a || '', '', '', '', b || ''] };
+};
