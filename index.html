@@ -47,9 +47,8 @@ function field(q) {
       return `<div class="ops">${o.map((x, j) => `<label class="op"><input type="${q.type}" name="${n}" value="${esc(x)}"><b>${L(j)}</b><span>${esc(x)}</span></label>`).join('')}</div>`
         + (q.type === 'checkbox' ? '<div class="mut" style="margin-top:6px">Boleh pilih lebih dari satu.</div>' : '');
     case 'likert': {
-      const [a, b] = o.length ? o : ['Sangat tidak setuju', 'Sangat setuju'];
-      return `<div class="lk">${[1,2,3,4,5].map(i => `<label class="sc"><input type="radio" name="${n}" value="${i}"><span>${i}</span></label>`).join('')}</div>`
-        + (a || b ? `<div class="ends"><span>${esc(a)}</span><span>${esc(b)}</span></div>` : '');
+      const { n: c, labels } = lkNorm(q.options);
+      return `<div class="lk" style="--n:${c}">${labels.map((t, i) => `<label class="sc"><input type="radio" name="${n}" value="${i + 1}"><span>${i + 1}</span>${t ? `<em class="sl">${esc(t)}</em>` : ''}</label>`).join('')}</div>`;
     }
   }
   return '';
