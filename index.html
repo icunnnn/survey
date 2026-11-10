@@ -23,7 +23,7 @@ async function init() {
   if (!id) {
     const { data } = await db.from('surveys').select('id,title,description').eq('status', 'buka');
     app.innerHTML = '<div class="hero"><h1>Kuesioner</h1><p>Pilih kuesioner yang ingin diisi.</p></div>' + (data?.length
-      ? data.map(s => `<a class="card lnk" href="?s=${s.id}"><h2>${esc(s.title)}</h2><div class="mut">${esc(s.description)}</div></a>`).join('')
+      ? data.map(s => `<a class="card lnk" href="?s=${s.id}"><h2>${fmtI(s.title)}</h2><div class="mut">${fmtI(s.description)}</div></a>`).join('')
       : '<p class="mut">Belum ada kuesioner yang dibuka.</p>');
     return;
   }
@@ -31,7 +31,7 @@ async function init() {
   S = r.data;
   if (!S) { app.innerHTML = '<div class="card">Kuesioner tidak ditemukan atau sudah ditutup.</div>'; return; }
   Q = (await db.from('questions').select('*').eq('survey_id', id).order('position')).data || [];
-  document.title = S.title;
+  document.title = plain(S.title);
   render();
 }
 
@@ -57,8 +57,8 @@ function field(q) {
 function render() {
   let num = 0;
   app.innerHTML = `<div class="pg"><i id="bar"></i></div><div class="pc" id="pc"></div>`
-    + `<div class="hero"><h1>${esc(S.title)}</h1>${S.description ? `<p>${esc(S.description)}</p>` : ''}</div><form id="f">`
-    + (S.consent ? `<div class="card"><h2>Persetujuan</h2><p style="white-space:pre-wrap">${esc(S.consent)}</p><label class="o"><input type="checkbox" required>Saya sudah membaca dan setuju ikut serta</label></div>` : '')
+    + `<div class="hero"><h1>${fmtI(S.title)}</h1>${S.description ? `<div class="rt">${fmt(S.description)}</div>` : ''}</div><form id="f">`
+    + (S.consent ? `<div class="card"><h2>Persetujuan</h2><div class="rt">${fmt(S.consent)}</div><label class="o"><input type="checkbox" required>Saya sudah membaca dan setuju ikut serta</label></div>` : '')
     + (S.identity !== 'anonim' ? `<div class="card"><h2>Identitas</h2><input name="name" placeholder="Nama" required>` + (S.identity === 'nama_email' ? `<input name="email" type="email" placeholder="Email" required>` : '') + `</div>` : '')
     + Q.map(q => q.type === 'info' ? `<div class="info ${['banner', 'soft', 'kartu'].includes(q.options?.[0]) ? q.options[0] : 'banner'}">${fmt(q.text)}</div>` : `<div class="card" data-q="${q.id}"><div class="qt"><span class="n">${++num}</span><b>${esc(q.text)}${q.required ? ' <span class="req">*</span>' : ''}</b></div>${field(q)}</div>`).join('')
     + `<p class="err" id="err"></p><button class="p sub" id="btn">Kirim jawaban</button></form>`;
