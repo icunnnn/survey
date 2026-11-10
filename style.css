@@ -89,3 +89,6 @@ h1{font-size:1.5rem}
 .sc span{width:min(100%,48px);height:auto;aspect-ratio:1}
 .sl{font-style:normal;font-size:.78rem;line-height:1.25;color:var(--mut);overflow-wrap:anywhere}
 .sc input:checked~.sl{color:var(--ac);font-weight:700}
+.rt p{margin:.4em 0}
+.rt ol,.rt ul{margin:.4em 0;padding-left:1.4em}
+.row.tb{margin-bottom:4px}
