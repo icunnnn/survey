@@ -39,7 +39,7 @@ function login() {
 async function list() {
   const { data } = await db.from('surveys').select('*').order('created_at', { ascending: false });
   app.innerHTML = `<div class="row"><h1 class="g">Kuesioner</h1><button class="p" id="new">Buat kuesioner</button><button id="out">Keluar</button></div>`
-    + ((data || []).map(s => `<div class="card row"><div class="g"><b>${esc(s.title)}</b><div class="mut">${s.status}</div></div><button data-id="${s.id}">Kelola</button></div>`).join('') || '<p class="mut">Belum ada kuesioner. Klik "Buat kuesioner".</p>');
+    + ((data || []).map(s => `<div class="card row"><div class="g"><b>${esc(plain(s.title))}</b><div class="mut">${s.status}</div></div><button data-id="${s.id}">Kelola</button></div>`).join('') || '<p class="mut">Belum ada kuesioner. Klik "Buat kuesioner".</p>');
   $('out').onclick = async () => { await db.auth.signOut(); login(); };
   $('new').onclick = async () => {
     const r = await db.from('surveys').insert({ title: 'Kuesioner baru' }).select().single();
@@ -54,17 +54,22 @@ async function edit(id) {
   Q.forEach(q => { if (q.type === 'likert') q.options = lkNorm(q.options); });
   del = [];
   const link = location.origin + '/?s=' + S.id;
+  const tb = (id, ls) => `<div class="row tb"><span class="mut">Format:</span><button data-s="${id}" data-f="b"><b>B</b></button><button data-s="${id}" data-f="i"><i>I</i></button>${ls ? `<button data-s="${id}" data-f="ol">1. Daftar</button><button data-s="${id}" data-f="ul">• Daftar</button>` : ''}</div>`;
   const sel = (arr, v) => arr.map(([k, t]) => `<option value="${k}"${v === k ? ' selected' : ''}>${t}</option>`).join('');
   app.innerHTML = `<div class="row"><button id="back">Kembali</button><button id="ans">Lihat jawaban</button><button class="d" id="rm">Hapus kuesioner</button></div>
   <div class="card"><h2>Pengaturan</h2>
-  <input id="t" value="${esc(S.title)}" placeholder="Judul"><textarea id="d" placeholder="Deskripsi">${esc(S.description)}</textarea>
-  <textarea id="c" placeholder="Teks persetujuan (informed consent). Kosongkan jika tidak perlu.">${esc(S.consent)}</textarea>
+  ${tb('t')}<input id="t" value="${esc(S.title)}" placeholder="Judul">${tb('d', 1)}<textarea id="d" placeholder="Deskripsi">${esc(S.description)}</textarea>
+  ${tb('c', 1)}<textarea id="c" placeholder="Teks persetujuan (informed consent). Kosongkan jika tidak perlu.">${esc(S.consent)}</textarea>
+  <div class="mut" style="margin:8px 0 4px">Pratinjau judul dan deskripsi</div><div class="hero" id="hp"></div>
   <div class="row"><select class="g" id="i">${sel([['anonim','Responden anonim'],['nama','Wajib isi nama'],['nama_email','Wajib isi nama dan email']], S.identity)}</select>
   <select class="g" id="st">${sel([['draft','Draft (belum bisa diisi)'],['buka','Dibuka'],['tutup','Ditutup']], S.status)}</select></div>
   <p class="mut">Link responden: <a href="${link}" target="_blank">${link}</a></p></div>
   <h2>Pertanyaan</h2><div id="qs"></div>
   <div class="row"><button id="add">Tambah pertanyaan</button><button id="addi">Tambah keterangan</button><button class="p" id="save">Simpan semua</button><span id="msg" class="mut"></span></div>`;
   $('back').onclick = list;
+  const hp = () => { $('hp').innerHTML = `<h1>${fmtI($('t').value)}</h1>${$('d').value ? `<div class="rt">${fmt($('d').value)}</div>` : ''}`; };
+  $('t').oninput = $('d').oninput = hp; hp();
+  app.querySelectorAll('button[data-s]').forEach(b => b.onclick = () => fmtEl($(b.dataset.s), b.dataset.f));
   $('ans').onclick = responses;
   $('rm').onclick = async () => { if (confirm('Hapus kuesioner beserta semua jawabannya?')) { await db.from('surveys').delete().eq('id', S.id); list(); } };
   $('addi').onclick = () => { Q.push({ id: null, text: '', type: 'info', required: false, options: ['banner'] }); drawQ(); };
@@ -105,8 +110,10 @@ async function edit(id) {
   drawQ();
 }
 
-function applyFmt(i, f) {
-  const ta = document.querySelector(`#qs textarea[data-i="${i}"][data-k="text"]`), v = ta.value;
+function applyFmt(i, f) { fmtEl(document.querySelector(`#qs textarea[data-i="${i}"][data-k="text"]`), f); }
+
+function fmtEl(ta, f) {
+  const v = ta.value;
   const s = ta.selectionStart, e = ta.selectionEnd;
   if (f === 'b' || f === 'i') {
     const m = f === 'b' ? '**' : '*';
@@ -168,14 +175,14 @@ async function responses() {
     const m = Object.fromEntries(r.answers.map(a => [a.question_id, a.value]));
     return [n + 1, new Date(r.created_at).toLocaleString('id-ID'), r.name || '', r.email || '', ...qs.map(q => m[q.id] || '')];
   });
-  app.innerHTML = `<div class="row"><button id="back">Kembali</button><h2 class="g" style="margin:0">${esc(S.title)}: ${rows.length} responden</h2><button class="p" id="xl"${rows.length ? '' : ' disabled'}>Export Excel</button></div>
+  app.innerHTML = `<div class="row"><button id="back">Kembali</button><h2 class="g" style="margin:0">${esc(plain(S.title))}: ${rows.length} responden</h2><button class="p" id="xl"${rows.length ? '' : ' disabled'}>Export Excel</button></div>
   <div class="card tw">${rows.length ? `<table><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}<th></th></tr>`
     + rows.map((r, i) => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}<td><button class="d" data-id="${R[i].id}">Hapus</button></td></tr>`).join('') + '</table>' : '<p class="mut">Belum ada yang menjawab.</p>'}</div>`;
   $('back').onclick = () => edit(S.id);
   $('xl').onclick = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rows]), 'Jawaban');
-    XLSX.writeFile(wb, (S.title.replace(/[^\w]+/g, '_') || 'jawaban') + '.xlsx');
+    XLSX.writeFile(wb, (plain(S.title).replace(/[^\w]+/g, '_') || 'jawaban') + '.xlsx');
   };
   app.querySelectorAll('button[data-id]').forEach(b => b.onclick = async () => {
     if (confirm('Hapus jawaban responden ini?')) { await db.from('responses').delete().eq('id', b.dataset.id); responses(); }
