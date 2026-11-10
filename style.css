@@ -92,3 +92,5 @@ h1{font-size:1.5rem}
 .rt p{margin:.4em 0}
 .rt ol,.rt ul{margin:.4em 0;padding-left:1.4em}
 .row.tb{margin-bottom:4px}
+.auto{min-height:0;resize:none;overflow:hidden}
+.qt b,.op span,.sl,.hero h1{white-space:pre-line}
