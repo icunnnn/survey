@@ -58,7 +58,7 @@ async function edit(id) {
   const sel = (arr, v) => arr.map(([k, t]) => `<option value="${k}"${v === k ? ' selected' : ''}>${t}</option>`).join('');
   app.innerHTML = `<div class="row"><button id="back">Kembali</button><button id="ans">Lihat jawaban</button><button class="d" id="rm">Hapus kuesioner</button></div>
   <div class="card"><h2>Pengaturan</h2>
-  ${tb('t')}<input id="t" value="${esc(S.title)}" placeholder="Judul">${tb('d', 1)}<textarea id="d" placeholder="Deskripsi">${esc(S.description)}</textarea>
+  ${tb('t')}<textarea id="t" class="auto" rows="1" placeholder="Judul">${esc(S.title)}</textarea>${tb('d', 1)}<textarea id="d" placeholder="Deskripsi">${esc(S.description)}</textarea>
   ${tb('c', 1)}<textarea id="c" placeholder="Teks persetujuan (informed consent). Kosongkan jika tidak perlu.">${esc(S.consent)}</textarea>
   <div class="mut" style="margin:8px 0 4px">Pratinjau judul dan deskripsi</div><div class="hero" id="hp"></div>
   <div class="row"><select class="g" id="i">${sel([['anonim','Responden anonim'],['nama','Wajib isi nama'],['nama_email','Wajib isi nama dan email']], S.identity)}</select>
@@ -68,7 +68,7 @@ async function edit(id) {
   <div class="row"><button id="add">Tambah pertanyaan</button><button id="addi">Tambah keterangan</button><button class="p" id="save">Simpan semua</button><span id="msg" class="mut"></span></div>`;
   $('back').onclick = list;
   const hp = () => { $('hp').innerHTML = `<h1>${fmtI($('t').value)}</h1>${$('d').value ? `<div class="rt">${fmt($('d').value)}</div>` : ''}`; };
-  $('t').oninput = $('d').oninput = hp; hp();
+  $('t').oninput = () => { grow($('t')); hp(); }; $('d').oninput = hp; hp(); grow($('t'));
   app.querySelectorAll('button[data-s]').forEach(b => b.onclick = () => fmtEl($(b.dataset.s), b.dataset.f));
   $('ans').onclick = responses;
   $('rm').onclick = async () => { if (confirm('Hapus kuesioner beserta semua jawabannya?')) { await db.from('surveys').delete().eq('id', S.id); list(); } };
@@ -76,6 +76,7 @@ async function edit(id) {
   $('add').onclick = () => { Q.push({ id: null, text: '', type: 'text', required: false, options: [] }); drawQ(); };
   $('qs').oninput = $('qs').onchange = e => {
     const t = e.target, k = t.dataset.k; if (!k) return;
+    if (t.classList.contains('auto')) grow(t);
     const q = Q[t.dataset.i];
     if (k === 'opt') { q.options[t.dataset.j] = t.value; return; }
     if (k === 'lkl') { q.options.labels[t.dataset.j] = t.value; return; }
@@ -110,6 +111,8 @@ async function edit(id) {
   drawQ();
 }
 
+function grow(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight ? el.scrollHeight + 3 + 'px' : ''; }
+
 function applyFmt(i, f) { fmtEl(document.querySelector(`#qs textarea[data-i="${i}"][data-k="text"]`), f); }
 
 function fmtEl(ta, f) {
@@ -142,11 +145,12 @@ function drawQ() {
     <div class="mut" style="margin:8px 0 4px">Pratinjau (begini tampilannya untuk responden)</div>
     <div class="info ${esc((q.options || [])[0] || 'banner')}" id="pv${i}">${fmt(q.text)}</div></div>`
   : `<div class="card">
-    <div class="row"><span class="n">${++n}</span><input class="g" data-i="${i}" data-k="text" value="${esc(q.text)}" placeholder="Tulis pertanyaan"></div>
+    <div class="row"><span class="n">${++n}</span><textarea class="g auto" rows="1" data-i="${i}" data-k="text" placeholder="Tulis pertanyaan">${esc(q.text)}</textarea></div>
     <div class="row">${typeSel(q, i)}
     <label class="o"><input type="checkbox" data-i="${i}" data-k="required"${q.required ? ' checked' : ''}>Wajib diisi</label>${ctl(i)}</div>
-    ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><input class="g" data-i="${i}" data-j="${j}" data-k="opt" value="${esc(o)}" placeholder="Isi opsi ${L(j)}"><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}${q.type === 'likert' ? `<div class="row"><span class="mut">Jumlah skala</span><select data-i="${i}" data-k="lkn" style="width:auto">${[2,3,4,5,6,7,8,9,10].map(c => `<option value="${c}"${q.options.n === c ? ' selected' : ''}>1 sampai ${c}</option>`).join('')}</select></div><div class="mut" style="margin-bottom:6px">Keterangan tiap angka (boleh dikosongkan)</div>${q.options.labels.map((t, j) => `<div class="row opt"><span class="bd">${j + 1}</span><input class="g" data-i="${i}" data-j="${j}" data-k="lkl" value="${esc(t)}" placeholder="Keterangan untuk angka ${j + 1}"></div>`).join('')}` : ''}</div>`).join('')
+    ${OPT.includes(q.type) ? `<div class="mut" style="margin-bottom:6px">Pilihan jawaban</div>${(q.options || []).map((o, j) => `<div class="row opt"><span class="bd">${L(j)}</span><textarea class="g auto" rows="1" data-i="${i}" data-j="${j}" data-k="opt" placeholder="Isi opsi ${L(j)}">${esc(o)}</textarea><button class="d" data-a="ro" data-i="${i}" data-j="${j}" title="Hapus opsi">✕</button></div>`).join('')}<button data-a="ao" data-i="${i}">Tambah opsi</button>` : ''}${q.type === 'likert' ? `<div class="row"><span class="mut">Jumlah skala</span><select data-i="${i}" data-k="lkn" style="width:auto">${[2,3,4,5,6,7,8,9,10].map(c => `<option value="${c}"${q.options.n === c ? ' selected' : ''}>1 sampai ${c}</option>`).join('')}</select></div><div class="mut" style="margin-bottom:6px">Keterangan tiap angka (boleh dikosongkan)</div>${q.options.labels.map((t, j) => `<div class="row opt"><span class="bd">${j + 1}</span><textarea class="g auto" rows="1" data-i="${i}" data-j="${j}" data-k="lkl" placeholder="Keterangan untuk angka ${j + 1}">${esc(t)}</textarea></div>`).join('')}` : ''}</div>`).join('')
     || '<p class="mut">Belum ada pertanyaan. Klik "Tambah pertanyaan" atau "Tambah keterangan".</p>';
+  $('qs').querySelectorAll('textarea.auto').forEach(grow);
 }
 
 async function save() {
