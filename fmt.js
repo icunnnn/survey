@@ -24,3 +24,8 @@ window.lkNorm = o => {
   const [a, b] = o && o.length ? o : ['Sangat tidak setuju', 'Sangat setuju'];
   return { n: 5, labels: [a || '', '', '', '', b || ''] };
 };
+
+// Format satu baris (judul): **tebal**, *miring*. plain() membuang tanda formatnya.
+window.fmtI = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+  .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>');
+window.plain = t => String(t ?? '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
